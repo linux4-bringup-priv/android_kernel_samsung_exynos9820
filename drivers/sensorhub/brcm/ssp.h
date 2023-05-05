@@ -1211,6 +1211,9 @@ void report_light_ir_data(struct ssp_data *data, int sensor_type, struct sensor_
 void report_light_flicker_data(struct ssp_data *data, int sensor_type, struct sensor_value *lightFlickerData);
 void report_light_cct_data(struct ssp_data *data, int sensor_type, struct sensor_value *lightdata);
 void report_prox_data(struct ssp_data *data, int sensor_type, struct sensor_value *proxdata);
+#ifdef CONFIG_SENSORS_SSP_F62
+void sensorhub_proximity_hint(bool far);
+#endif
 void report_prox_raw_data(struct ssp_data *data, int sensor_type, struct sensor_value *proxrawdata);
 void report_prox_alert_data(struct ssp_data *data, int sensor_type, struct sensor_value *proxdata);
 void report_proximity_pocket_data(struct ssp_data *data, int sensor_type, struct sensor_value *proximity_pocket);

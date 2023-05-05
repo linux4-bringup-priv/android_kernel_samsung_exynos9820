@@ -20,6 +20,10 @@
 #define BATCH_IOCTL_MAGIC		0xFC
 #define INJECTION_MODE_ADDITIONAL_INFO		1
 
+#ifdef CONFIG_SENSORS_SSP_F62
+extern void sec_ts_enable_ear_detect(bool enable);
+#endif
+
 #if defined(CONFIG_SENSORS_SABC)
 enum {
 	BRIGHTNESS_LEVEL1 = 1,
@@ -130,6 +134,10 @@ static void enable_sensor(struct ssp_data *data,
 			proximity_open_calibration(data);
 #endif
 			set_proximity_threshold(data);
+
+#ifdef CONFIG_SENSORS_SSP_F62
+			sec_ts_enable_ear_detect(true);
+#endif
 		}
 
 		if (iSensorType == PROXIMITY_ALERT_SENSOR)
@@ -291,6 +299,11 @@ static int ssp_remove_sensor(struct ssp_data *data,
 			data->pre_camera_lux   = CAM_LUX_INITIAL;
 			report_camera_lux_data(data, -2);
 		}
+	}
+#endif
+#ifdef CONFIG_SENSORS_SSP_F62
+	else if (uChangedSensor == PROXIMITY_SENSOR) {
+		sec_ts_enable_ear_detect(false);
 	}
 #endif
 	if (!data->bSspShutdown)

@@ -435,6 +435,37 @@ void report_prox_data(struct ssp_data *data, int sensor_type, struct sensor_valu
 #endif
 }
 
+#ifdef CONFIG_SENSORS_SSP_F62
+extern struct ssp_data* ssp_data_info;
+
+void sensorhub_proximity_hint(bool far) {
+	// Workaround for screen-off proximity on f62
+	if (ssp_data_info && ssp_data_info->uLastAPState == MSG2SSP_AP_STATUS_SLEEP
+			&& atomic64_read(&ssp_data_info->aSensorEnable) & (1 << PROXIMITY_SENSOR)) {
+		struct sensor_value proximity_value;
+		struct sensor_value prev_proximity_value;
+		memset(&proximity_value, 0, sizeof(proximity_value));
+		proximity_value.prox_detect = !far;
+		proximity_value.prox_adc = 400;
+
+		ssp_dbg("[SSP] Screen-off proximity hint: Far: %d", far);
+		memcpy(&prev_proximity_value, &ssp_data_info->buf[PROXIMITY_SENSOR], sizeof(prev_proximity_value));
+		report_prox_data(ssp_data_info, PROXIMITY_SENSOR, &proximity_value);
+		memcpy(&ssp_data_info->buf[PROXIMITY_SENSOR], &prev_proximity_value, sizeof(prev_proximity_value));
+
+		// We need to check physical proximity again now, since proximity reports on-change, so if we
+		// mistakenly woke up the device it wouldn't go to sleep again if proximity is still detected
+		usleep_range(500, 1000);
+		if (ssp_data_info->buf[PROXIMITY_SENSOR].prox_detect == prev_proximity_value.prox_detect
+				&& prev_proximity_value.prox_detect != !far) {
+			ssp_dbg("[SSP] Screen-off proximity: Resetting proximity to Near: %d, since the sensor didn't send a response in time",
+					prev_proximity_value.prox_detect);
+			report_prox_data(ssp_data_info, PROXIMITY_SENSOR, &ssp_data_info->buf[PROXIMITY_SENSOR]);
+		}
+	}
+}
+#endif
+
 void report_prox_raw_data(struct ssp_data *data, int sensor_type,
 	struct sensor_value *proxrawdata)
 {

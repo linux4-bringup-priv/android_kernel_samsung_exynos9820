@@ -216,6 +216,10 @@ void ssp_temp_task(struct work_struct *work)
 #endif
 }
 
+#ifdef CONFIG_SENSORS_SSP_F62
+int prev_prox_lux = 0;
+#endif
+
 /*************************************************************************/
 /* SSP Debug timer function                                              */
 /*************************************************************************/
@@ -233,6 +237,17 @@ int print_mcu_debug(char *pchRcvDataFrame, int *pDataIdx,
 			iLength, iRcvDataFrameLength, cur);
 		return iLength ? iLength : ERROR;
 	}
+
+#ifdef CONFIG_SENSORS_SSP_F62
+	if (!strncmp(&pchRcvDataFrame[*pDataIdx], "SSP_l_debug lux=", 16)) {
+		int lux_value, lux_value2;
+		sscanf(&pchRcvDataFrame[*pDataIdx], "SSP_l_debug lux=%d,%d,", &lux_value, &lux_value2);
+		if (((float)lux_value2 / (float)prev_prox_lux) - 1 >= 0.2) {
+			sensorhub_proximity_hint(true);
+		}
+		prev_prox_lux = lux_value2;
+	}
+#endif
 
 	ssp_dbg("[SSP]: MSG From MCU - %s\n", &pchRcvDataFrame[*pDataIdx]);
 	*pDataIdx += iLength;

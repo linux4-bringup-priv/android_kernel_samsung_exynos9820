@@ -962,4 +962,8 @@ void sec_ts_ioctl_remove(struct sec_ts_data *ts);
 
 int sec_ts_set_press_property(struct sec_ts_data *ts);
 
+#ifdef CONFIG_SENSORS_SSP_F62
+void sec_ts_enable_ear_detect(bool enable);
+#endif
+
 #endif

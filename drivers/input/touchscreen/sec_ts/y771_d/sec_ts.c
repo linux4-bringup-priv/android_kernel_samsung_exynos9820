@@ -19,6 +19,11 @@ struct sec_ts_data *tsp_info;
 #include <linux/fb.h>
 #endif
 
+#ifdef CONFIG_SENSORS_SSP_F62
+bool first_ear_detect_after_enable = false;
+extern void sensorhub_proximity_hint(bool far);
+#endif
+
 struct sec_ts_data *ts_dup;
 
 #ifdef USE_POWER_RESET_WORK
@@ -1258,11 +1263,22 @@ static void sec_ts_read_event(struct sec_ts_data *ts)
 					input_report_key(ts->input_dev, KEY_BLACK_UI_GESTURE, 1);
 					input_sync(ts->input_dev);
 					input_info(true, &ts->client->dev, "%s: lp changed(%d)\n", __func__, ts->scrub_id);
+#ifdef CONFIG_SENSORS_SSP_F62
+					if (ts->ed_enable)
+						sec_ts_enable_ear_detect(true);
+#endif
 				} else if (p_event_status->status_data_1 == 6) {
 					ts->scrub_id = EVENT_TYPE_TSP_SCAN_BLOCK;
 					input_report_key(ts->input_dev, KEY_BLACK_UI_GESTURE, 1);
 					input_sync(ts->input_dev);
 					input_info(true, &ts->client->dev, "%s: sleep changed(%d)\n", __func__, ts->scrub_id);
+
+#ifdef CONFIG_SENSORS_SSP_F62
+					if (!first_ear_detect_after_enable)
+						sensorhub_proximity_hint(p_event_status->status_data_1 == 0 || p_event_status->status_data_1 == 5);
+					else
+						first_ear_detect_after_enable = false;
+#endif
 				}
 				input_report_key(ts->input_dev, KEY_BLACK_UI_GESTURE, 0);
 				input_sync(ts->input_dev);
@@ -3695,6 +3711,24 @@ int stui_tsp_exit(void)
 	epen_disable_mode(0);
 
 	return ret;
+}
+#endif
+
+#ifdef CONFIG_SENSORS_SSP_F62
+void sec_ts_enable_ear_detect(bool enable) {
+	int ret;
+
+	if (tsp_info) {
+		first_ear_detect_after_enable = true;
+		tsp_info->ed_enable = enable;
+
+		ret = tsp_info->sec_ts_i2c_write(tsp_info, SEC_TS_SET_EAR_DETECT_MODE, &tsp_info->ed_enable, 1);
+		if (ret < 0) {
+				input_err(true, &tsp_info->client->dev,
+						"%s: failed to set ed_enable\n", __func__);
+		}
+	}
+
 }
 #endif
 

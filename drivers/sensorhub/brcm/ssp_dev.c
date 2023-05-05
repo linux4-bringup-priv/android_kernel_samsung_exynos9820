@@ -125,7 +125,7 @@ static int __init bootmode_setup(char *str)
 }
 __setup("bootmode=", bootmode_setup);
 
-static struct ssp_data *ssp_data_info;
+struct ssp_data *ssp_data_info;
 void set_ssp_data_info(struct ssp_data *data)
 {
 	if (data != NULL)
