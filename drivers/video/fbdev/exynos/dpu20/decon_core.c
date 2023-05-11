@@ -606,11 +606,20 @@ err:
 }
 
 /* ---------- FB_BLANK INTERFACE ----------- */
+#ifdef CONFIG_SENSORS_SSP_F62
+bool decon0_enabled_for_proximity = false;
+#endif
 int _decon_enable(struct decon_device *decon, enum decon_state state)
 {
 	struct decon_mode_info psr;
 	struct decon_param p;
 	int ret = 0;
+
+#ifdef CONFIG_SENSORS_SSP_F62
+	if (decon->id == 0) {
+		decon0_enabled_for_proximity = false;
+	}
+#endif
 
 	if (IS_DECON_ON_STATE(decon)) {
 		decon_warn("%s decon-%d already on(%s) state\n", __func__,
@@ -692,6 +701,11 @@ static int decon_enable(struct decon_device *decon)
 	enum decon_state next_state = DECON_STATE_ON;
 
 	mutex_lock(&decon->lock);
+#ifdef CONFIG_SENSORS_SSP_F62
+	if (decon->id == 0) {
+		decon0_enabled_for_proximity = false;
+	}
+#endif
 	if (decon->state == next_state) {
 		decon_warn("decon-%d %s already %s state\n", decon->id,
 				__func__, decon_state_names[decon->state]);
@@ -859,6 +873,9 @@ int cmu_dpu_dump(void)
 	return 0;
 }
 
+#ifdef CONFIG_SENSORS_SSP_F62
+extern bool ssp_proximity_enabled(void);
+#endif
 int _decon_disable(struct decon_device *decon, enum decon_state state)
 {
 	struct decon_mode_info psr;
@@ -871,6 +888,17 @@ int _decon_disable(struct decon_device *decon, enum decon_state state)
 
 	s_time = ktime_get();
 	frames = atomic_read(&decon->up.remaining_frame);
+#endif
+
+#ifdef CONFIG_SENSORS_SSP_F62
+	if (decon->id == 0) {
+		if (ssp_proximity_enabled()) {
+			decon_info("Skip decon disable due to screen-off proximity");
+			decon0_enabled_for_proximity = true;
+			return ret;
+		}
+		decon0_enabled_for_proximity = false;
+	}
 #endif
 
 	if (IS_DECON_OFF_STATE(decon)) {
@@ -1000,6 +1028,9 @@ static int decon_disable(struct decon_device *decon)
 	enum decon_state next_state = DECON_STATE_OFF;
 
 	mutex_lock(&decon->lock);
+#ifdef CONFIG_SENSORS_SSP_F62
+	decon0_enabled_for_proximity = false;
+#endif
 	if (decon->state == next_state) {
 		decon_warn("decon-%d %s already %s state\n", decon->id,
 				__func__, decon_state_names[decon->state]);
@@ -1041,6 +1072,29 @@ out:
 	mutex_unlock(&decon->lock);
 	return ret;
 }
+#ifdef CONFIG_SENSORS_SSP_F62
+void dpu_set_decon0_off_state_proximity(bool on) {
+	int ret;
+	struct decon_device *decon0 = get_decon_drvdata(0);
+
+	mutex_lock(&decon0->lock);
+	if (on && IS_DECON_OFF_STATE(decon0)) {
+		decon_info("Enabling decon for screen-off proximity");
+		ret = _decon_enable(decon0, DECON_STATE_ON);
+		if (!ret)
+			decon0_enabled_for_proximity = true;
+	} else if (!on && IS_DECON_ON_STATE(decon0) && decon0_enabled_for_proximity) {
+		decon_info("Disabling decon for screen-off proximity");
+		ret = _decon_disable(decon0, DECON_STATE_OFF);
+		if (ret)
+			decon0_enabled_for_proximity = true;
+	}
+	mutex_unlock(&decon0->lock);
+
+	if (ret)
+		decon_err("Failed to set decon state");
+}
+#endif
 
 int decon_doze_suspend(struct decon_device *decon)
 {
@@ -1091,11 +1145,6 @@ struct disp_pwr_state decon_pwr_state[] = {
 	},
 };
 
-#ifdef CONFIG_SENSORS_SSP_F62
-u32 decon0_pwr_mode = DISP_PWR_NORMAL;
-bool decon0_pwr_on_proximity = false;
-extern bool ssp_proximity_enabled(void);
-#endif
 int decon_update_pwr_state(struct decon_device *decon, u32 mode)
 {
 	int ret = 0;
@@ -1105,22 +1154,12 @@ int decon_update_pwr_state(struct decon_device *decon, u32 mode)
 		return -EINVAL;
 	}
 
+	mutex_lock(&decon->pwr_state_lock);
 #ifdef CONFIG_SENSORS_SSP_F62
 	if (decon->id == 0) {
-		if (mode == DISP_PWR_OFF) {
-			if (ssp_proximity_enabled()) {
-				decon_info("Skip decon disable due to screen-off proximity");
-				decon0_pwr_on_proximity = true;
-				return ret;
-			}
-		} else {
-			decon0_pwr_on_proximity = false;
-		}
-		decon0_pwr_mode = mode;
+		decon0_enabled_for_proximity = false;
 	}
 #endif
-
-	mutex_lock(&decon->pwr_state_lock);
 	if (decon_pwr_state[mode].state == decon->state) {
 		decon_warn("decon-%d already %s state\n",
 				decon->id, decon_state_names[decon->state]);
@@ -1192,27 +1231,6 @@ out:
 
 	return ret;
 }
-#ifdef CONFIG_SENSORS_SSP_F62
-void dpu_set_decon0_off_state_proximity(bool on) {
-	int ret;
-	struct decon_device *decon0 = get_decon_drvdata(0);
-
-	if (on && decon0_pwr_mode == DISP_PWR_OFF) {
-		decon_info("Enabling decon for screen-off proximity");
-		ret = decon_update_pwr_state(decon0, DISP_PWR_NORMAL);
-		if (!ret)
-			decon0_pwr_on_proximity = true;
-	} else if (!on && decon0_pwr_mode == DISP_PWR_NORMAL && decon0_pwr_on_proximity) {
-		decon_info("Disabling decon for screen-off proximity");
-		ret = decon_update_pwr_state(decon0, DISP_PWR_OFF);
-		if (!ret)
-			decon0_pwr_on_proximity = false;
-	}
-
-	if (ret)
-		decon_err("Failed to set decon pwr mode");
-}
-#endif
 
 static int decon_dp_disable(struct decon_device *decon)
 {
