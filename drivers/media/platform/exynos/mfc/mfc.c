@@ -846,11 +846,20 @@ static unsigned int mfc_poll(struct file *file,
 
 	mfc_debug_enter();
 
+	/*
+	 * vb2_poll() returns early, without poll_wait(), while the queue is not
+	 * streaming. epoll registers the wait queue only on the first call, so
+	 * it would never be woken once the queue starts streaming.
+	 */
 	if (req_events & (POLLOUT | POLLWRNORM)) {
 		mfc_debug(2, "wait source buffer\n");
+		if (!vb2_is_streaming(&ctx->vq_src))
+			poll_wait(file, &ctx->vq_src.done_wq, wait);
 		ret = vb2_poll(&ctx->vq_src, file, wait);
 	} else if (req_events & (POLLIN | POLLRDNORM)) {
 		mfc_debug(2, "wait destination buffer\n");
+		if (!vb2_is_streaming(&ctx->vq_dst))
+			poll_wait(file, &ctx->vq_dst.done_wq, wait);
 		ret = vb2_poll(&ctx->vq_dst, file, wait);
 	}
 
