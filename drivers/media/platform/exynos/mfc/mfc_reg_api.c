@@ -253,29 +253,51 @@ int mfc_set_enc_codec_buffers(struct mfc_ctx *ctx)
 	return 0;
 }
 
+/*
+ * The CPB size follows the data actually queued instead of the size negotiated
+ * with S_FMT, because userspace (e.g. C2) may queue larger buffers.
+ * The H/W needs STREAM_BUF_ALIGN bytes of slack behind the stream, so
+ * strm_size is trimmed if the plane is too small to provide it.
+ */
+unsigned int mfc_get_dec_cpb_size(struct mfc_ctx *ctx, struct mfc_buf *mfc_buf,
+		unsigned int start_num_byte, unsigned int *strm_size)
+{
+	unsigned long plane_size = vb2_plane_size(&mfc_buf->vb.vb2_buf, 0);
+	unsigned int cpb_buf_size;
+
+	cpb_buf_size = ALIGN(start_num_byte + *strm_size + STREAM_BUF_ALIGN,
+			STREAM_BUF_ALIGN);
+
+	if (cpb_buf_size > plane_size) {
+		cpb_buf_size = plane_size;
+		if (start_num_byte + *strm_size > set_strm_size_max(cpb_buf_size)) {
+			mfc_info_ctx("Decrease strm_size because of %d align: %u -> %u\n",
+				STREAM_BUF_ALIGN, *strm_size,
+				set_strm_size_max(cpb_buf_size) - start_num_byte);
+			*strm_size = set_strm_size_max(cpb_buf_size) - start_num_byte;
+			mfc_buf->vb.vb2_buf.planes[0].bytesused = *strm_size;
+		}
+	}
+
+	return cpb_buf_size;
+}
+
 /* Set registers for decoding stream buffer */
 int mfc_set_dec_stream_buffer(struct mfc_ctx *ctx, struct mfc_buf *mfc_buf,
 		  unsigned int start_num_byte, unsigned int strm_size)
 {
 	struct mfc_dev *dev = ctx->dev;
-	struct mfc_dec *dec = ctx->dec_priv;
-	unsigned int cpb_buf_size;
+	unsigned int cpb_buf_size = 0;
 	dma_addr_t addr;
 	int index = -1;
 
 	mfc_debug_enter();
 
-	cpb_buf_size = ALIGN(dec->src_buf_size, STREAM_BUF_ALIGN);
-
 	if (mfc_buf) {
 		index = mfc_buf->vb.vb2_buf.index;
 		addr = mfc_buf->addr[0][0];
-		if (strm_size > set_strm_size_max(cpb_buf_size)) {
-			mfc_info_ctx("Decrease strm_size because of %d align: %u -> %u\n",
-				STREAM_BUF_ALIGN, strm_size, set_strm_size_max(cpb_buf_size));
-			strm_size = set_strm_size_max(cpb_buf_size);
-			mfc_buf->vb.vb2_buf.planes[0].bytesused = strm_size;
-		}
+		cpb_buf_size = mfc_get_dec_cpb_size(ctx, mfc_buf, start_num_byte,
+				&strm_size);
 	} else {
 		addr = 0;
 	}

@@ -254,6 +254,8 @@ void mfc_otf_set_hwfc_index(struct mfc_ctx *ctx, int job_id);
 int mfc_set_dec_codec_buffers(struct mfc_ctx *ctx);
 int mfc_set_enc_codec_buffers(struct mfc_ctx *mfc_ctx);
 
+unsigned int mfc_get_dec_cpb_size(struct mfc_ctx *ctx, struct mfc_buf *mfc_buf,
+		unsigned int start_num_byte, unsigned int *strm_size);
 int mfc_set_dec_stream_buffer(struct mfc_ctx *ctx,
 		struct mfc_buf *mfc_buf,
 		unsigned int start_num_byte,

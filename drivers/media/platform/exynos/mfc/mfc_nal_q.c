@@ -944,14 +944,7 @@ static int __mfc_nal_q_run_in_buf_dec(struct mfc_ctx *ctx, DecoderInputStr *pInS
 	src_index = src_mb->vb.vb2_buf.index;
 	buf_addr = src_mb->addr[0][0];
 	strm_size = src_mb->vb.vb2_buf.planes[0].bytesused;
-	cpb_buf_size = ALIGN(dec->src_buf_size, STREAM_BUF_ALIGN);
-
-	if (strm_size > set_strm_size_max(cpb_buf_size)) {
-		mfc_info_ctx("[NALQ] Decrease strm_size : %u -> %u, gap : %d\n",
-				strm_size, set_strm_size_max(cpb_buf_size), STREAM_BUF_ALIGN);
-		strm_size = set_strm_size_max(cpb_buf_size);
-		src_mb->vb.vb2_buf.planes[0].bytesused = strm_size;
-	}
+	cpb_buf_size = mfc_get_dec_cpb_size(ctx, src_mb, 0, &strm_size);
 
 	mfc_debug(2, "[NALQ][BUFINFO] ctx[%d] set src index: %d, addr: 0x%08llx\n",
 			ctx->num, src_index, buf_addr);
